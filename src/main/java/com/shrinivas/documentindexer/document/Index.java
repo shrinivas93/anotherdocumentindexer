@@ -3,6 +3,8 @@ package com.shrinivas.documentindexer.document;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import com.shrinivas.documentindexer.pojo.DbStatistic;
+
 @Document(collection = "index")
 public class Index {
 

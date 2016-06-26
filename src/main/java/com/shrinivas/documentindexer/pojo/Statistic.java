@@ -1,4 +1,4 @@
-package com.shrinivas.documentindexer.document;
+package com.shrinivas.documentindexer.pojo;
 
 import java.util.Map;
 

@@ -20,10 +20,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.shrinivas.documentindexer.document.DbStatistic;
-import com.shrinivas.documentindexer.document.Document;
+import com.shrinivas.documentindexer.document.DocumentDetails;
 import com.shrinivas.documentindexer.document.Index;
-import com.shrinivas.documentindexer.document.Statistic;
+import com.shrinivas.documentindexer.pojo.DbStatistic;
+import com.shrinivas.documentindexer.pojo.Document;
+import com.shrinivas.documentindexer.pojo.Statistic;
+import com.shrinivas.documentindexer.repository.DocumentDetailsRepository;
 import com.shrinivas.documentindexer.repository.IndexRepository;
 
 @Component
@@ -31,21 +33,111 @@ public class DocumentIndexer {
 
 	private static final Logger LOGGER = LogManager.getLogger(DocumentIndexer.class);
 
+	private Map<String, Double> documentLengthMap = new TreeMap<>();
+
 	@Autowired
 	private IndexRepository indexRepository;
+
+	@Autowired
+	private DocumentDetailsRepository documentDetailsRepository;
 
 	@Value("${source.file}")
 	private String sourceFile;
 
 	public void process() throws IOException {
 		List<File> indexableFiles = getSourceFiles();
-		LOGGER.info("Found " + indexableFiles.size() + " indexable files.");
+		long totalFiles = indexableFiles.size();
+		LOGGER.info("Found " + totalFiles + " indexable files.");
 		Map<String, Statistic> index = convertIndexToMap(indexRepository.findAll());
+		documentLengthMap = convertDocumentDetailsToDocumentDetailsMap(documentDetailsRepository.findAll());
+		index = denormalizeTermFrequency(index, documentLengthMap);
 		index = startIndexing(indexableFiles, index);
 		LOGGER.info("Indexed " + index.size() + " words");
+		index = calculateIdf(index, totalFiles);
+		LOGGER.info("IDF calculation done");
+		index = normalizeTermFrequency(index, documentLengthMap);
+		index = calculateTfIdf(index);
+		LOGGER.info("TF-IDF calculation done");
+		List<DocumentDetails> documentDetails = convertDocumentDetailsMapToDocumentDetails(documentLengthMap);
 		List<Index> indices = convertMapToDocument(index);
-		LOGGER.info("Storing indices to DB");
 		indexRepository.save(indices);
+		LOGGER.info("Storing indices to DB");
+		documentDetailsRepository.deleteAll();
+		documentDetailsRepository.save(documentDetails);
+		LOGGER.info("Storing document details to DB");
+	}
+
+	private Map<String, Statistic> calculateTfIdf(Map<String, Statistic> index) {
+		Set<String> words = index.keySet();
+		for (String word : words) {
+			Statistic statistic = index.get(word);
+			double idf = statistic.getIdf();
+			Map<String, Document> documents = statistic.getDocuments();
+			Set<String> documentPaths = documents.keySet();
+			for (String path : documentPaths) {
+				Document document = documents.get(path);
+				document.setTfIdf(document.getTf() * idf);
+			}
+		}
+		return index;
+	}
+
+	private Map<String, Statistic> normalizeTermFrequency(Map<String, Statistic> index,
+			Map<String, Double> documentDetailsMap) {
+		Set<String> words = index.keySet();
+		for (String word : words) {
+			Statistic statistic = index.get(word);
+			Map<String, Document> documents = statistic.getDocuments();
+			Set<String> documentPaths = documents.keySet();
+			for (String path : documentPaths) {
+				double wordCount = documentDetailsMap.get(path);
+				Document document = documents.get(path);
+				document.setTf(document.getTf() / wordCount);
+			}
+		}
+		return index;
+	}
+
+	private Map<String, Statistic> denormalizeTermFrequency(Map<String, Statistic> index,
+			Map<String, Double> documentDetailsMap) {
+		Set<String> words = index.keySet();
+		for (String word : words) {
+			Statistic statistic = index.get(word);
+			Map<String, Document> documents = statistic.getDocuments();
+			Set<String> documentPaths = documents.keySet();
+			for (String path : documentPaths) {
+				double wordCount = documentDetailsMap.get(path);
+				Document document = documents.get(path);
+				document.setTf(document.getTf() * wordCount);
+			}
+		}
+		return index;
+	}
+
+	private Map<String, Statistic> calculateIdf(Map<String, Statistic> index, long totalFiles) {
+		Set<String> words = index.keySet();
+		for (String word : words) {
+			Statistic statistic = index.get(word);
+			statistic.setIdf(Math.log(totalFiles / (double) statistic.getDocuments().size()));
+		}
+		return index;
+	}
+
+	private List<DocumentDetails> convertDocumentDetailsMapToDocumentDetails(Map<String, Double> documentDetailsMap) {
+		List<DocumentDetails> documentDetails = new ArrayList<>();
+		Set<String> filePaths = documentDetailsMap.keySet();
+		for (String filePath : filePaths) {
+			documentDetails.add(new DocumentDetails(filePath, documentDetailsMap.get(filePath)));
+		}
+		return documentDetails;
+	}
+
+	private Map<String, Double> convertDocumentDetailsToDocumentDetailsMap(List<DocumentDetails> documentDetails) {
+		Map<String, Double> documentDetailsMap = new TreeMap<>();
+		for (DocumentDetails documentDetail : documentDetails) {
+			documentDetailsMap.put(documentDetail.getFilePath(), documentDetail.getWordCount());
+		}
+		return documentDetailsMap;
 	}
 
 	private Map<String, Statistic> convertIndexToMap(List<Index> findAll) {
@@ -79,19 +171,33 @@ public class DocumentIndexer {
 		BufferedReader br;
 		for (File file : indexableFiles) {
 			String filePath = file.getAbsolutePath();
+			Set<String> allWords = index.keySet();
+			for (String eachWord : allWords) {
+				Document document = index.get(eachWord).getDocuments().get(filePath);
+				if (document != null) {
+					document.setTf(0);
+				}
+			}
 			try {
 				FileReader fr = new FileReader(file);
 				br = new BufferedReader(fr);
 				String str;
+				double documentLength = 0;
 				while ((str = br.readLine()) != null) {
 					String[] words = str.split(" ");
 					for (String word : words) {
+						documentLength++;
 						if (!index.containsKey(word)) {
 							index.put(word, new Statistic(word, 0, new TreeMap<String, Document>()));
 						}
-						index.get(word).getDocuments().put(filePath, new Document(filePath, 0));
+						Map<String, Document> documents = index.get(word).getDocuments();
+						if (!documents.containsKey(filePath)) {
+							documents.put(filePath, new Document(filePath, 0, 0));
+						}
+						documents.get(filePath).incrementTf();
 					}
 				}
+				documentLengthMap.put(filePath, documentLength);
 			} catch (FileNotFoundException ex) {
 				LOGGER.error(ex.getMessage());
 			}
