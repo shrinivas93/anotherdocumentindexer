@@ -31,7 +31,8 @@ import com.shrinivas.documentindexer.repository.IndexRepository;
 @Component
 public class DocumentIndexer {
 
-	private static final Logger LOGGER = LogManager.getLogger(DocumentIndexer.class);
+	private static final Logger LOGGER = LogManager
+			.getLogger(DocumentIndexer.class);
 
 	private Map<String, Double> documentLengthMap = new TreeMap<>();
 
@@ -48,8 +49,10 @@ public class DocumentIndexer {
 		List<File> indexableFiles = getSourceFiles();
 		long totalFiles = indexableFiles.size();
 		LOGGER.info("Found " + totalFiles + " indexable files.");
-		Map<String, Statistic> index = convertIndexToMap(indexRepository.findAll());
-		documentLengthMap = convertDocumentDetailsToDocumentDetailsMap(documentDetailsRepository.findAll());
+		Map<String, Statistic> index = convertIndexToMap(indexRepository
+				.findAll());
+		documentLengthMap = convertDocumentDetailsToDocumentDetailsMap(documentDetailsRepository
+				.findAll());
 		index = denormalizeTermFrequency(index, documentLengthMap);
 		index = startIndexing(indexableFiles, index);
 		LOGGER.info("Indexed " + index.size() + " words");
@@ -82,15 +85,15 @@ public class DocumentIndexer {
 		return index;
 	}
 
-	private Map<String, Statistic> normalizeTermFrequency(Map<String, Statistic> index,
-			Map<String, Double> documentDetailsMap) {
+	private Map<String, Statistic> normalizeTermFrequency(
+			Map<String, Statistic> index, Map<String, Double> documentDetailsMap) {
 		Set<String> words = index.keySet();
 		for (String word : words) {
 			Statistic statistic = index.get(word);
 			Map<String, Document> documents = statistic.getDocuments();
 			Set<String> documentPaths = documents.keySet();
 			for (String path : documentPaths) {
-				double wordCount = documentDetailsMap.get(path);
+				Double wordCount = documentDetailsMap.get(path);
 				Document document = documents.get(path);
 				document.setTf(document.getTf() / wordCount);
 			}
@@ -98,15 +101,15 @@ public class DocumentIndexer {
 		return index;
 	}
 
-	private Map<String, Statistic> denormalizeTermFrequency(Map<String, Statistic> index,
-			Map<String, Double> documentDetailsMap) {
+	private Map<String, Statistic> denormalizeTermFrequency(
+			Map<String, Statistic> index, Map<String, Double> documentDetailsMap) {
 		Set<String> words = index.keySet();
 		for (String word : words) {
 			Statistic statistic = index.get(word);
 			Map<String, Document> documents = statistic.getDocuments();
 			Set<String> documentPaths = documents.keySet();
 			for (String path : documentPaths) {
-				double wordCount = documentDetailsMap.get(path);
+				Double wordCount = documentDetailsMap.get(path);
 				Document document = documents.get(path);
 				document.setTf(document.getTf() * wordCount);
 			}
@@ -114,28 +117,34 @@ public class DocumentIndexer {
 		return index;
 	}
 
-	private Map<String, Statistic> calculateIdf(Map<String, Statistic> index, long totalFiles) {
+	private Map<String, Statistic> calculateIdf(Map<String, Statistic> index,
+			long totalFiles) {
 		Set<String> words = index.keySet();
 		for (String word : words) {
 			Statistic statistic = index.get(word);
-			statistic.setIdf(Math.log(totalFiles / (double) statistic.getDocuments().size()));
+			statistic.setIdf(Math.log(totalFiles
+					/ (double) statistic.getDocuments().size()));
 		}
 		return index;
 	}
 
-	private List<DocumentDetails> convertDocumentDetailsMapToDocumentDetails(Map<String, Double> documentDetailsMap) {
+	private List<DocumentDetails> convertDocumentDetailsMapToDocumentDetails(
+			Map<String, Double> documentDetailsMap) {
 		List<DocumentDetails> documentDetails = new ArrayList<>();
 		Set<String> filePaths = documentDetailsMap.keySet();
 		for (String filePath : filePaths) {
-			documentDetails.add(new DocumentDetails(filePath, documentDetailsMap.get(filePath)));
+			documentDetails.add(new DocumentDetails(filePath,
+					documentDetailsMap.get(filePath)));
 		}
 		return documentDetails;
 	}
 
-	private Map<String, Double> convertDocumentDetailsToDocumentDetailsMap(List<DocumentDetails> documentDetails) {
+	private Map<String, Double> convertDocumentDetailsToDocumentDetailsMap(
+			List<DocumentDetails> documentDetails) {
 		Map<String, Double> documentDetailsMap = new TreeMap<>();
 		for (DocumentDetails documentDetail : documentDetails) {
-			documentDetailsMap.put(documentDetail.getFilePath(), documentDetail.getWordCount());
+			documentDetailsMap.put(documentDetail.getFilePath(),
+					documentDetail.getWordCount());
 		}
 		return documentDetailsMap;
 	}
@@ -148,7 +157,8 @@ public class DocumentIndexer {
 			for (Document document : dbStatistic.getDocuments()) {
 				documents.put(document.getPath(), document);
 			}
-			Statistic statistic = new Statistic(dbStatistic.getWord(), dbStatistic.getIdf(), documents);
+			Statistic statistic = new Statistic(dbStatistic.getWord(),
+					dbStatistic.getIdf(), documents);
 			indices.put(index.getWord(), statistic);
 		}
 		return indices;
@@ -159,21 +169,24 @@ public class DocumentIndexer {
 		Set<String> words = index.keySet();
 		for (String word : words) {
 			Statistic statistic = index.get(word);
-			List<Document> dbDocuments = new ArrayList<>(statistic.getDocuments().values());
-			DbStatistic dbStatistic = new DbStatistic(statistic.getWord(), statistic.getIdf(), dbDocuments);
+			List<Document> dbDocuments = new ArrayList<>(statistic
+					.getDocuments().values());
+			DbStatistic dbStatistic = new DbStatistic(statistic.getWord(),
+					statistic.getIdf(), dbDocuments);
 			indices.add(new Index(word, dbStatistic));
 		}
 		return indices;
 	}
 
-	private Map<String, Statistic> startIndexing(List<File> indexableFiles, Map<String, Statistic> index)
-			throws IOException {
+	private Map<String, Statistic> startIndexing(List<File> indexableFiles,
+			Map<String, Statistic> index) throws IOException {
 		BufferedReader br;
 		for (File file : indexableFiles) {
 			String filePath = file.getAbsolutePath();
 			Set<String> allWords = index.keySet();
 			for (String eachWord : allWords) {
-				Document document = index.get(eachWord).getDocuments().get(filePath);
+				Document document = index.get(eachWord).getDocuments()
+						.get(filePath);
 				if (document != null) {
 					document.setTf(0);
 				}
@@ -186,15 +199,20 @@ public class DocumentIndexer {
 				while ((str = br.readLine()) != null) {
 					String[] words = str.split(" ");
 					for (String word : words) {
-						documentLength++;
-						if (!index.containsKey(word)) {
-							index.put(word, new Statistic(word, 0, new TreeMap<String, Document>()));
+						if (word.length() < 1024) {
+							documentLength++;
+							if (!index.containsKey(word)) {
+								index.put(word, new Statistic(word, 0,
+										new TreeMap<String, Document>()));
+							}
+							Map<String, Document> documents = index.get(word)
+									.getDocuments();
+							if (!documents.containsKey(filePath)) {
+								documents.put(filePath, new Document(filePath,
+										0, 0));
+							}
+							documents.get(filePath).incrementTf();
 						}
-						Map<String, Document> documents = index.get(word).getDocuments();
-						if (!documents.containsKey(filePath)) {
-							documents.put(filePath, new Document(filePath, 0, 0));
-						}
-						documents.get(filePath).incrementTf();
 					}
 				}
 				documentLengthMap.put(filePath, documentLength);
@@ -217,7 +235,8 @@ public class DocumentIndexer {
 		return getIndexableFiles(sourceFilePath, indexableFiles);
 	}
 
-	private List<File> getIndexableFiles(List<File> sourceFilePath, List<File> indexableFiles) {
+	private List<File> getIndexableFiles(List<File> sourceFilePath,
+			List<File> indexableFiles) {
 		for (File file : sourceFilePath) {
 			if (file.isFile()) {
 				indexableFiles.add(file);
@@ -227,7 +246,8 @@ public class DocumentIndexer {
 					public boolean accept(File dir, String name) {
 						File file = new File(dir, name);
 						if (file.isFile()) {
-							String extension = FilenameUtils.getExtension(file.getAbsolutePath());
+							String extension = FilenameUtils.getExtension(file
+									.getAbsolutePath());
 							return extension.equalsIgnoreCase("txt");
 						}
 						return true;
